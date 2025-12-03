@@ -83,7 +83,9 @@ def easter_sunday(year: int) -> date:
     m = (a + 11 * h + 22 * l) // 451
     month = (h + l - 7 * m + 114) // 31
     day = ((h + l - 7 * m + 114) % 31) + 1
-    return date@lru_cache(maxsize=None)
+    return date(year, month, day)
+
+@lru_cache(maxsize=None)
 def festivos_colombia(year: int) -> set[date]:
     fest = set()
     # Festivos fijos
@@ -97,10 +99,12 @@ def festivos_colombia(year: int) -> set[date]:
     fest.update({easter - timedelta(days=3), easter - timedelta(days=2)})
 
     # Festivos movibles (Ley Emiliani)
-    fest.update(year, 1, 6)), next_monday(date(year, 3, 19)),
-        next_monday(date(year, 6, 29)), next_monday(date(year, 8, 15)),
-        next_monday(date(year, 10, 12)), next_monday(date(year, 11, 1)),
-        next_monday(date(year, 11, 11))
+    fest.update({
+        next_monday(date(year, 6, 29)),  # San Pedro y San Pablo
+        next_monday(date(year, 8, 15)),  # Asunción
+        next_monday(date(year, 10, 12)), # Día de la Raza
+        next_monday(date(year, 11, 1)),  # Todos los Santos
+        next_monday(date(year, 11, 11))  # Independencia de Cartagena
     })
 
     # Festivos móviles alrededor de Pascua
@@ -165,13 +169,11 @@ def procesar_excel(df: pd.DataFrame) -> pd.DataFrame:
                             add_concepto(nombre, 'Hora extra nocturna en domingo o festivo', extra)
                     horas_restantes_festivo -= ordinaria
                 else:
-                    # Ya se consumieron las 8h ordinarias
                     if tipo == 'diurna':
                         add_concepto(nombre, 'Hora extra diurna en domingo o festivo', dur)
                     else:
                         add_concepto(nombre, 'Hora extra nocturna en domingo o festivo', dur)
             else:
-                # Día normal: todo es extra
                 if tipo == 'diurna':
                     add_concepto(nombre, 'Hora extra diurna', dur)
                 else:
