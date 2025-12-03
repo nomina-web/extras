@@ -13,21 +13,27 @@ PORCENTAJES = {
     'Hora extra nocturna en domingo o festivo': '155%',
     'Hora ordinaria en domingo o festivo': '80%',
     'Recargo nocturno festivo': '115%',
-    'Recargo nocturno ordinario': '35%'
+    'Recargo nocturno ordinario': '35%'  # ✅ Nuevo concepto
 }
 
-HORAS_JORNADA = 8  # Umbral para turno completo
+HORAS_JORNADA = 8  # Umbral de jornada ordinaria por turno
 
 # --- Utilidades ---
 def convertir_hora(hora_str: str) -> datetime:
+    """
+    Convierte cadenas de hora a datetime soportando:
+    - '7 pm', '7pm', '07:30 pm', '06:30 p.m.'
+    - '18:30' (formato 24h)
+    """
     s = str(hora_str).strip().lower().replace(' ', '')
     s = s.replace('.', '')
     s = s.replace('p.m', 'pm').replace('a.m', 'am')
     if ':' not in s and (s.endswith('am') or s.endswith('pm')):
         s = s[:-2] + ':00' + s[-2:]
     try:
-        return datetime.strptime(s, '%I:%M%p')
+        return datetime.strptime(s, '%I:%M%p')  # 12h con am/pm
     except ValueError:
+        # Fallback a 24h
         if ':' not in s:
             s = f'{s}:00'
         return datetime.strptime(s, '%H:%M')
@@ -36,9 +42,14 @@ def combinar_fecha_hora(fecha, hora_dt):
     return datetime.combine(pd.to_datetime(fecha).date(), hora_dt.time())
 
 def dividir_por_dia(fecha, ini_time_dt, fin_time_dt):
+    """
+    Divide un intervalo que puede cruzar medianoche en bloques por día.
+    Devuelve [(fecha_del_bloque, ini_dt, fin_dt), ...]
+    """
     ini = combinar_fecha_hora(fecha, ini_time_dt)
     fin = combinar_fecha_hora(fecha, fin_time_dt)
     if fin <= ini:
+        # Cruza medianoche
         fin += timedelta(days=1)
     bloques = []
     actual = ini
@@ -50,27 +61,38 @@ def dividir_por_dia(fecha, ini_time_dt, fin_time_dt):
     return bloques
 
 def segmentar_por_franja(ini_dt, fin_dt):
+    """
+    Segmenta un intervalo en partes diurnas/nocturnas usando cortes 06:00 y 21:00.
+    Devuelve una lista de dicts con:
+      {'dur': horas, 'tipo': 'diurna'|'nocturna', 'dia': date, 'start': datetime}
+    """
     if fin_dt <= ini_dt:
         fin_dt += timedelta(days=1)
+
+    # Cortes potenciales en ambos días (por si cruza medianoche)
     cortes = []
     for base in [ini_dt.date(), (ini_dt + timedelta(days=1)).date()]:
         cortes.append(datetime.combine(base, datetime.strptime('06:00', '%H:%M').time()))
         cortes.append(datetime.combine(base, datetime.strptime('21:00', '%H:%M').time()))
+
     puntos = [ini_dt, fin_dt] + [c for c in cortes if ini_dt < c < fin_dt]
     puntos.sort()
+
     segmentos = []
     for s, e in zip(puntos[:-1], puntos[1:]):
         dur = (e - s).total_seconds() / 3600.0
         mid = s + (e - s) / 2
         tipo = 'diurna' if 6 <= mid.hour < 21 else 'nocturna'
-        segmentos.append((dur, tipo, s.date()))
+        segmentos.append({'dur': dur, 'tipo': tipo, 'dia': s.date(), 'start': s})
     return segmentos
 
-# --- Festivos ---
+# --- Festivos (Colombia) ---
 def next_monday(d: date) -> date:
+    """Mueve una fecha al siguiente lunes (Ley Emiliani). Si ya es lunes, se mantiene."""
     return d + timedelta(days=(7 - d.weekday()) % 7)
 
 def easter_sunday(year: int) -> date:
+    """Domingo de Pascua (calendario gregoriano). Algoritmo de Meeus/Jones/Butcher."""
     a = year % 19
     b = year // 100
     c = year % 100
@@ -78,7 +100,8 @@ def easter_sunday(year: int) -> date:
     e = b % 4
     f = (b + 8) // 25
     g = (b - f + 1) // 3
-   
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
     k = c % 4
     l = (32 + 2 * e + 2 * i - h - k) % 7
     m = (a + 11 * h + 22 * l) // 451
@@ -88,22 +111,43 @@ def easter_sunday(year: int) -> date:
 
 @lru_cache(maxsize=None)
 def festivos_colombia(year: int) -> set[date]:
+    """
+    Genera el conjunto de festivos colombianos para un año, incluyendo
+    fijos, Ley Emiliani y festivos móviles alrededor de Pascua.
+    """
     fest = set()
+
+    # Fijos
     fest.update({
-        date(year, 1, 1), date(year, 5, 1), date(year, 7, 20),
-        date(year, 8, 7), date(year, 12, 8), date(year, 12, 25)
+        date(year, 1, 1),   # Año Nuevo
+        date(year, 5, 1),   # Día del Trabajo
+        date(year, 7, 20),  # Independencia
+        date(year, 8, 7),   # Batalla de Boyacá
+        date(year, 12, 8),  # Inmaculada Concepción (fijo)
+        date(year, 12, 25)  # Navidad
     })
+
     easter = easter_sunday(year)
-    timedelta(days=3), easter - timedelta(days=2)})
+
+    # Jueves y Viernes Santo
+    fest.update({easter - timedelta(days=3), easter - timedelta(days=2)})
+
+    # Festivos movibles (Ley Emiliani)
     fest.update({
-        next_monday(date(year, 1, 6)), next_monday(date(year, 3, 19)),
-        next_monday(date(year, 6, 29)), next_monday(date(year, 8, 15)),
-        next_monday(date(year, 10, 12)), next_monday(date(year, 11, 1)),
-        next_monday(date(year, 11, 11))
+        next_monday(date(year, 1, 6)),   # Epifanía
+        next_monday(date(year, 3, 19)),  # San José
+        next_monday(date(year, 6, 29)),  # San Pedro y San Pablo
+        next_monday(date(year, 8, 15)),  # Asunción
+        next_monday(date(year, 10, 12)), # Día de la Raza
+        next_monday(date(year, 11, 1)),  # Todos los Santos
+        next_monday(date(year, 11, 11))  # Independencia de Cartagena
     })
+
+    # Móviles alrededor de Pascua (trasladados al lunes)
     fest.add(next_monday(easter + timedelta(days=43)))  # Ascensión
     fest.add(next_monday(easter + timedelta(days=60)))  # Corpus Christi
-    timedelta(days=68)))  # Sagrado Corazón
+    fest.add(next_monday(easter + timedelta(days=68)))  # Sagrado Corazón
+
     return fest
 
 def construir_calendario_festivos(col_fechas: pd.Series) -> set[date]:
@@ -115,7 +159,13 @@ def construir_calendario_festivos(col_fechas: pd.Series) -> set[date]:
 
 # --- Procesamiento principal ---
 def procesar_excel(df: pd.DataFrame) -> pd.DataFrame:
+    # Normalizar columnas esperadas
     df.columns = [col.strip().upper() for col in df.columns]
+    requeridas = {'FECHA', 'NOMBRE', 'INICIAL', 'FINAL'}
+    faltantes = requeridas - set(df.columns)
+    if faltantes:
+        raise ValueError(f"Faltan columnas requeridas: {faltantes}. Se requieren {requeridas}.")
+
     df['FECHA'] = pd.to_datetime(df['FECHA'])
     df['INI_DT'] = df['INICIAL'].apply(convertir_hora)
     df['FIN_DT'] = df['FINAL'].apply(convertir_hora)
@@ -127,20 +177,28 @@ def procesar_excel(df: pd.DataFrame) -> pd.DataFrame:
         if horas > 0:
             conceptos.append((nombre, concepto_base, horas))
 
+    # Procesar por persona y fecha declarada (turno base)
     for (nombre, fecha), grupo in df.groupby(['NOMBRE', 'FECHA']):
         grupo = grupo.sort_values(by='INI_DT')
+
+        # 1) Acumular todos los segmentos del turno completo
         segmentos_turno = []
         for _, row in grupo.iterrows():
             bloques = dividir_por_dia(fecha, row['INI_DT'], row['FIN_DT'])
             for _, ini_dt, fin_dt in bloques:
                 segmentos_turno.extend(segmentar_por_franja(ini_dt, fin_dt))
 
-        # Ordenar segmentos cronológicamente
-        segmentos_turno.sort(key=lambda x: x[2])  # por fecha real
+        # 2) Ordenar cronológicamente por start
+        segmentos_turno.sort(key=lambda seg: seg['start'])
 
+        # 3) Aplicar jornada ordinaria global (8h) sobre el turno completo
         horas_restantes_global = HORAS_JORNADA
 
-        for dur, tipo, dia_real in segmentos_turno:
+        for seg in segmentos_turno:
+            dur = seg['dur']
+            tipo = seg['tipo']
+            dia_real = seg['dia']
+
             es_domingo = (dia_real.weekday() == 6)
             es_festivo = (dia_real in festivos_set)
             es_festivo_o_domingo = es_domingo or es_festivo
@@ -153,6 +211,7 @@ def procesar_excel(df: pd.DataFrame) -> pd.DataFrame:
                 extra = dur
 
             if es_festivo_o_domingo:
+                # Festivo/Domingo
                 if tipo == 'diurna':
                     if ordinaria > 0:
                         add_concepto(nombre, 'Hora ordinaria en domingo o festivo', ordinaria)
@@ -164,6 +223,7 @@ def procesar_excel(df: pd.DataFrame) -> pd.DataFrame:
                     if extra > 0:
                         add_concepto(nombre, 'Hora extra nocturna en domingo o festivo', extra)
             else:
+                # Día normal
                 if tipo == 'diurna':
                     if extra > 0:
                         add_concepto(nombre, 'Hora extra diurna', extra)
@@ -176,6 +236,9 @@ def procesar_excel(df: pd.DataFrame) -> pd.DataFrame:
             horas_restantes_global -= ordinaria
 
     df_conceptos = pd.DataFrame(conceptos, columns=['NOMBRE', 'CONCEPTO_BASE', 'HORAS'])
+    if df_conceptos.empty:
+        return pd.DataFrame(columns=['NOMBRE', 'CONCEPTO', 'HORAS'])
+
     resumen = df_conceptos.groupby(['NOMBRE', 'CONCEPTO_BASE'], as_index=False)['HORAS'].sum()
     resumen['CONCEPTO'] = resumen['CONCEPTO_BASE'].apply(lambda c: f"{c} ({PORCENTAJES[c]})")
     return resumen[['NOMBRE', 'CONCEPTO', 'HORAS']]
