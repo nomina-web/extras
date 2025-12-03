@@ -13,7 +13,7 @@ PORCENTAJES = {
     'Hora extra nocturna en domingo o festivo': '155%',
     'Hora ordinaria en domingo o festivo': '80%',
     'Recargo nocturno festivo': '115%',
-    'Recargo nocturno ordinario': '35%'  # ✅ Nuevo concepto
+    'Recargo nocturno ordinario': '35%'
 }
 
 HORAS_JORNADA = 8  # Umbral para turno completo
@@ -78,8 +78,7 @@ def easter_sunday(year: int) -> date:
     e = b % 4
     f = (b + 8) // 25
     g = (b - f + 1) // 3
-    h = (19 * a + b - d - g + 15) % 30
-    i = c // 4
+   
     k = c % 4
     l = (32 + 2 * e + 2 * i - h - k) % 7
     m = (a + 11 * h + 22 * l) // 451
@@ -95,7 +94,7 @@ def festivos_colombia(year: int) -> set[date]:
         date(year, 8, 7), date(year, 12, 8), date(year, 12, 25)
     })
     easter = easter_sunday(year)
-    fest.update({easter - timedelta(days=3), easter - timedelta(days=2)})
+    timedelta(days=3), easter - timedelta(days=2)})
     fest.update({
         next_monday(date(year, 1, 6)), next_monday(date(year, 3, 19)),
         next_monday(date(year, 6, 29)), next_monday(date(year, 8, 15)),
@@ -104,7 +103,7 @@ def festivos_colombia(year: int) -> set[date]:
     })
     fest.add(next_monday(easter + timedelta(days=43)))  # Ascensión
     fest.add(next_monday(easter + timedelta(days=60)))  # Corpus Christi
-    fest.add(next_monday(easter + timedelta(days=68)))  # Sagrado Corazón
+    timedelta(days=68)))  # Sagrado Corazón
     return fest
 
 def construir_calendario_festivos(col_fechas: pd.Series) -> set[date]:
@@ -136,24 +135,22 @@ def procesar_excel(df: pd.DataFrame) -> pd.DataFrame:
             for _, ini_dt, fin_dt in bloques:
                 segmentos_turno.extend(segmentar_por_franja(ini_dt, fin_dt))
 
-        horas_restantes_por_dia = {}
+        # Ordenar segmentos cronológicamente
+        segmentos_turno.sort(key=lambda x: x[2])  # por fecha real
+
+        horas_restantes_global = HORAS_JORNADA
 
         for dur, tipo, dia_real in segmentos_turno:
-            if dia_real not in horas_restantes_por_dia:
-                horas_restantes_por_dia[dia_real] = HORAS_JORNADA
+            es_domingo = (dia_real.weekday() == 6)
+            es_festivo = (dia_real in festivos_set)
+            es_festivo_o_domingo = es_domingo or es_festivo
 
-            horas_restantes_ordinarias = horas_restantes_por_dia[dia_real]
-
-            if horas_restantes_ordinarias > 0:
-                ordinaria = min(horas_restantes_ordinarias, dur)
+            if horas_restantes_global > 0:
+                ordinaria = min(horas_restantes_global, dur)
                 extra = max(0.0, dur - ordinaria)
             else:
                 ordinaria = 0.0
                 extra = dur
-
-            es_domingo = (dia_real.weekday() == 6)
-            es_festivo = (dia_real in festivos_set)
-            es_festivo_o_domingo = es_domingo or es_festivo
 
             if es_festivo_o_domingo:
                 if tipo == 'diurna':
@@ -171,12 +168,12 @@ def procesar_excel(df: pd.DataFrame) -> pd.DataFrame:
                     if extra > 0:
                         add_concepto(nombre, 'Hora extra diurna', extra)
                 else:
-                    if extra > 0:
-                        add_concepto(nombre, 'Hora extra nocturna', extra)
                     if ordinaria > 0:
                         add_concepto(nombre, 'Recargo nocturno ordinario', ordinaria)
+                    if extra > 0:
+                        add_concepto(nombre, 'Hora extra nocturna', extra)
 
-            horas_restantes_por_dia[dia_real] -= ordinaria
+            horas_restantes_global -= ordinaria
 
     df_conceptos = pd.DataFrame(conceptos, columns=['NOMBRE', 'CONCEPTO_BASE', 'HORAS'])
     resumen = df_conceptos.groupby(['NOMBRE', 'CONCEPTO_BASE'], as_index=False)['HORAS'].sum()
