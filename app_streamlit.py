@@ -83,25 +83,31 @@ def easter_sunday(year: int) -> date:
     m = (a + 11 * h + 22 * l) // 451
     month = (h + l - 7 * m + 114) // 31
     day = ((h + l - 7 * m + 114) % 31) + 1
-    return date(year, month, day)
-
-@lru_cache(maxsize=None)
+    return date@lru_cache(maxsize=None)
 def festivos_colombia(year: int) -> set[date]:
     fest = set()
+    # Festivos fijos
     fest.update({
         date(year, 1, 1), date(year, 5, 1), date(year, 7, 20),
         date(year, 8, 7), date(year, 12, 8), date(year, 12, 25)
-   ter = easter_sunday(year)
+    })
+
+    easter = easter_sunday(year)
+    # Jueves y Viernes Santo
     fest.update({easter - timedelta(days=3), easter - timedelta(days=2)})
-    fest.update({
-        next_monday(date(year, 1, 6)), next_monday(date(year, 3, 19)),
+
+    # Festivos movibles (Ley Emiliani)
+    fest.update(year, 1, 6)), next_monday(date(year, 3, 19)),
         next_monday(date(year, 6, 29)), next_monday(date(year, 8, 15)),
         next_monday(date(year, 10, 12)), next_monday(date(year, 11, 1)),
         next_monday(date(year, 11, 11))
     })
+
+    # Festivos móviles alrededor de Pascua
     fest.add(next_monday(easter + timedelta(days=43)))  # Ascensión
-    Corpus Christi
+    fest.add(next_monday(easter + timedelta(days=60)))  # Corpus Christi
     fest.add(next_monday(easter + timedelta(days=68)))  # Sagrado Corazón
+
     return fest
 
 def construir_calendario_festivos(col_fechas: pd.Series) -> set[date]:
@@ -135,6 +141,8 @@ def procesar_excel(df: pd.DataFrame) -> pd.DataFrame:
 
         segmentos_turno.sort(key=lambda seg: seg['start'])
 
+        horas_restantes_festivo = HORAS_JORNADA
+
         for seg in segmentos_turno:
             dur = seg['dur']
             tipo = seg['tipo']
@@ -145,9 +153,8 @@ def procesar_excel(df: pd.DataFrame) -> pd.DataFrame:
             es_festivo_o_domingo = es_domingo or es_festivo
 
             if es_festivo_o_domingo:
-                # Aplicar jornada ordinaria de 8h primero
-                if HORAS_JORNADA > 0:
-                    ordinaria = min(HORAS_JORNADA, dur)
+                if horas_restantes_festivo > 0:
+                    ordinaria = min(horas_restantes_festivo, dur)
                     extra = max(0.0, dur - ordinaria)
                     if ordinaria > 0:
                         add_concepto(nombre, 'Hora ordinaria en domingo o festivo', ordinaria)
@@ -156,7 +163,7 @@ def procesar_excel(df: pd.DataFrame) -> pd.DataFrame:
                             add_concepto(nombre, 'Hora extra diurna en domingo o festivo', extra)
                         else:
                             add_concepto(nombre, 'Hora extra nocturna en domingo o festivo', extra)
-                    HORAS_JORNADA -= ordinaria
+                    horas_restantes_festivo -= ordinaria
                 else:
                     # Ya se consumieron las 8h ordinarias
                     if tipo == 'diurna':
@@ -202,3 +209,4 @@ if archivo:
         data=buffer,
         file_name="resumen_todos_conceptos.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
