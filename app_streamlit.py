@@ -91,9 +91,17 @@ def festivos_colombia(year: int) -> set[date]:
     fest = set()
     # Festivos fijos
     fest.update({
-        date(year, 1, 1), date(year, 5, 1), date(year, 7, 20),
-        date(year, 8, 7), date(year, 12, 8), date(year, 12, 25)
-   ter - timedelta(days=2)})
+        date(year, 1, 1),   # Año Nuevo
+        date(year, 5, 1),   # Día del Trabajo
+        date(year, 7, 20),  # Independencia
+        date(year, 8, 7),   # Batalla de Boyacá
+        date(year, 12, 8),  # Inmaculada Concepción
+        date(year, 12, 25)  # Navidad
+    })
+
+    easter = easter_sunday(year)
+    # Jueves y Viernes Santo
+    fest.update({easter - timedelta(days=3), easter - timedelta(days=2)})
 
     # Festivos movibles (Ley Emiliani)
     fest.update({
@@ -103,7 +111,10 @@ def festivos_colombia(year: int) -> set[date]:
         next_monday(date(year, 8, 15)),  # Asunción
         next_monday(date(year, 10, 12)), # Día de la Raza
         next_monday(date(year, 11, 1)),  # Todos los Santos
-           # Festivos móviles alrededor de Pascua
+        next_monday(date(year, 11, 11))  # Independencia de Cartagena
+    })
+
+    # Festivos móviles alrededor de Pascua
     fest.add(next_monday(easter + timedelta(days=43)))  # Ascensión
     fest.add(next_monday(easter + timedelta(days=60)))  # Corpus Christi
     fest.add(next_monday(easter + timedelta(days=68)))  # Sagrado Corazón
