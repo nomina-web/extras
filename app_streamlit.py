@@ -81,7 +81,8 @@ def easter_sunday(year: int) -> date:
     f = (b + 8) // 25
     g = (b - f + 1) // 3
     h = (19 * a + b - d - g + 15) % 30
-   4
+    i = c // 4
+    k = c % 4
     l = (32 + 2 * e + 2 * i - h - k) % 7
     m = (a + 11 * h + 22 * l) // 451
     month = (h + l - 7 * m + 114) // 31
@@ -92,7 +93,13 @@ def next_monday(d: date) -> date:
     return d + timedelta(days=(0 - d.weekday()) % 7)
 
 @lru_cache(maxsize=None)
-def Independencia
+def festivos_colombia(year: int) -> set[date]:
+    fest = set()
+    # Inamovibles
+    fest.update({
+        date(year, 1, 1),   # Año Nuevo
+        date(year, 5, 1),   # Día del Trabajo
+        date(year, 7, 20),  # Independencia
         date(year, 8, 7),   # Batalla de Boyacá
         date(year, 12, 8),  # Inmaculada Concepción
         date(year, 12, 25), # Navidad
@@ -103,7 +110,11 @@ def Independencia
     fest.update({easter - timedelta(days=3), easter - timedelta(days=2)})
 
     # Trasladables (Ley Emiliani)
-    next_monday(date(year, 8, 15)),  # Asunción
+    fest.update({
+        next_monday(date(year, 1, 6)),   # Reyes
+        next_monday(date(year, 3, 19)),  # San José
+        next_monday(date(year, 6, 29)),  # San Pedro y San Pablo
+        next_monday(date(year, 8, 15)),  # Asunción
         next_monday(date(year, 10, 12)), # Diversidad (Colón)
         next_monday(date(year, 11, 1)),  # Todos los Santos
         next_monday(date(year, 11, 11)), # Independencia Cartagena
