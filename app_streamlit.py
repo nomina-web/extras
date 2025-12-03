@@ -79,20 +79,18 @@ def easter_sunday(year: int) -> date:
     g = (b - f + 1) // 3
     h = (19 * a + b - d - g + 15) % 30
     i = c // 4
-   22 * l) // 451
-    month = (h + l - 7 * m + 114) // 31
-    day = ((h + l - 7 * m + 114) % 31) + 1
-    return date(year, month, day)
-
-@lru_cache(maxsize=None)
-def festivos_colombia(year: int) -> set[date]:
-    fest = set()
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+   ()
     fest.update({
         date(year, 1, 1), date(year, 5, 1), date(year, 7, 20),
         date(year, 8, 7), date(year, 12, 8), date(year, 12, 25)
     })
     easter = easter_sunday(year)
-   (date(year, 1, 6)), next_monday(date(year, 3, 19)),
+    fest.update({easter - timedelta(days=3), easter - timedelta(days=2)})
+    fest.update({
+        next_monday(date(year, 1, 6)), next_monday(date(year, 3, 19)),
         next_monday(date(year, 6, 29)), next_monday(date(year, 8, 15)),
         next_monday(date(year, 10, 12)), next_monday(date(year, 11, 1)),
         next_monday(date(year, 11, 11))
@@ -102,7 +100,7 @@ def festivos_colombia(year: int) -> set[date]:
     fest.add(next_monday(easter + timedelta(days=68)))  # Sagrado Corazón
     return fest
 
-defivos(col_fechas: pd.Series) -> set[date]:
+def construir_calendario_festivos(col_fechas: pd.Series) -> set[date]:
     anos = sorted(pd.to_datetime(col_fechas).dt.year.unique().tolist())
     calendario = set()
     for y in anos:
