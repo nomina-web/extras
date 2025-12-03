@@ -84,11 +84,10 @@ def easter_sunday(year: int) -> date:
     i = c // 4
     k = c % 4
     l = (32 + 2 * e + 2 * i - h - k) % 7
-    (h + l - 7 * m + 114) // 31
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
     day = ((h + l - 7 * m + 114) % 31) + 1
-    return date(year, month, day)
-
-def next_monday(d: date) -> date:
+    return date(year,def next_monday(d: date) -> date:
     return d + timedelta(days=(0 - d.weekday()) % 7)
 
 @lru_cache(maxsize=None)
@@ -101,11 +100,7 @@ def festivos_colombia(year: int) -> set[date]:
         date(year, 7, 20),  # Independencia
         date(year, 8, 7),   # Batalla de Boyacá
         date(year, 12, 8),  # Inmaculada Concepción
-        date(year, 12, 25), # Navidad
-    })
-
-    # Semana Santa
-    easter = easter_sunday(year)
+       ter_sunday(year)
     fest.update({easter - timedelta(days=3), easter - timedelta(days=2)})
 
     # Trasladables (Ley Emiliani)
