@@ -1,3 +1,5 @@
+
+import re
 import pandas as pd
 from datetime import datetime, timedelta, date
 from functools import lru_cache
@@ -14,21 +16,49 @@ PORCENTAJES = {
     'Recargo nocturno festivo': '115%'
 }
 
-HORAS_JORNADA = 8  # Jornada ordinaria aplicable solo en festivos/domingo por día real
+HORAS_JORNADA = 8  # Jornada ordinaria aplicable solo en festivo/domingo por día real
 
 # --- Utilidades ---
 def convertir_hora(hora_str: str) -> datetime:
-    s = str(hora_str).strip().lower().replace(' ', '')
-    s = s.replace('.', '')
-    s = s.replace('p.m', 'pm').replace('a.m', 'am')
-    if ':' not in s and (s.endswith('am') or s.endswith('pm')):
+    """
+    Convierte una cadena de hora en objeto datetime, manejando:
+    - Formatos con AM/PM (con o sin puntos, espacios)
+    - Formatos 12h y 24h
+    - Casos sin minutos (ej: 8AM -> 08:00AM)
+    - Corrige casos como '16AM' o '16 PM' (lo interpreta en 24h)
+    Lanza ValueError con mensaje claro si no puede convertir.
+    """
+    if pd.isna(hora_str):
+        raise ValueError("Valor de hora vacío o nulo")
+
+    s = str(hora_str).strip().lower()
+    # Eliminar espacios y puntos
+    s = re.sub(r'[ .]', '', s)
+    # Homologar sufijos am/pm
+    s = s.replace('a.m', 'am').replace('p.m', 'pm')
+
+    # Solo número + am/pm sin minutos -> agregar :00 (p.e. '8am' -> '8:00am')
+    if re.match(r'^\d{1,2}(am|pm)$', s):
         s = s[:-2] + ':00' + s[-2:]
-    try:
-        return datetime.strptime(s, '%I:%M%p')
-    except ValueError:
-        if ':' not in s:
-            s = f'{s}:00'
-        return datetime.strptime(s, '%H:%M')
+
+    # Casos como '16am' o '16pm' (inválidos en 12h): tratar como 24h
+    if re.match(r'^\d{2}(am|pm)$', s):
+        num = int(s[:-2])
+        if num > 12:
+            s = f'{num}:00'
+
+    # Solo número (sin minutos ni am/pm) -> agregar :00
+    if re.match(r'^\d{1,2}$', s):
+        s = s + ':00'
+
+    # Intentos de parseo en orden
+    for fmt in ['%I:%M%p', '%H:%M']:
+        try:
+            return datetime.strptime(s.upper(), fmt)
+        except ValueError:
+            continue
+
+    raise ValueError(f"Formato de hora inválido: '{hora_str}'")
 
 def combinar_fecha_hora(fecha, hora_dt):
     return datetime.combine(pd.to_datetime(fecha).date(), hora_dt.time())
@@ -36,26 +66,35 @@ def combinar_fecha_hora(fecha, hora_dt):
 def dividir_por_dia(fecha, ini_time_dt, fin_time_dt):
     ini = combinar_fecha_hora(fecha, ini_time_dt)
     fin = combinar_fecha_hora(fecha, fin_time_dt)
+    # Si fin ≤ ini, asumimos que cruza la medianoche (siguiente día)
     if fin <= ini:
         fin += timedelta(days=1)
+
     bloques = []
     actual = ini
     while actual.date() < fin.date():
+        # Corte al fin del día
         corte = datetime.combine(actual.date(), datetime.strptime('23:59', '%H:%M').time()) + timedelta(minutes=1)
         bloques.append((actual.date(), actual, corte))
         actual = corte
+    # Último bloque hasta fin
     bloques.append((fin.date(), actual, fin))
     return bloques
 
 def segmentar_por_franja(ini_dt, fin_dt):
+    # Garantiza que fin > ini (si cruza medianoche, se corrige)
     if fin_dt <= ini_dt:
         fin_dt += timedelta(days=1)
+
+    # Cortes a las 06:00 y 21:00 en el día base y el siguiente
     cortes = []
     for base in [ini_dt.date(), (ini_dt + timedelta(days=1)).date()]:
         cortes.append(datetime.combine(base, datetime.strptime('06:00', '%H:%M').time()))
         cortes.append(datetime.combine(base, datetime.strptime('21:00', '%H:%M').time()))
+
     puntos = [ini_dt, fin_dt] + [c for c in cortes if ini_dt < c < fin_dt]
     puntos.sort()
+
     segmentos = []
     for s, e in zip(puntos[:-1], puntos[1:]):
         dur = (e - s).total_seconds() / 3600.0
@@ -64,11 +103,12 @@ def segmentar_por_franja(ini_dt, fin_dt):
         segmentos.append({'dur': dur, 'tipo': tipo, 'dia': s.date(), 'start': s})
     return segmentos
 
-# --- Festivos ---
+# --- Festivos (Colombia) ---
 def next_monday(d: date) -> date:
     return d + timedelta(days=(7 - d.weekday()) % 7)
 
 def easter_sunday(year: int) -> date:
+    # Computus (algoritmo clásico)
     a = year % 19
     b = year // 100
     c = year % 100
@@ -88,21 +128,19 @@ def easter_sunday(year: int) -> date:
 @lru_cache(maxsize=None)
 def festivos_colombia(year: int) -> set[date]:
     fest = set()
-    # Festivos fijos
+    # Fijos
     fest.update({
         date(year, 1, 1),   # Año Nuevo
         date(year, 5, 1),   # Día del Trabajo
         date(year, 7, 20),  # Independencia
         date(year, 8, 7),   # Batalla de Boyacá
         date(year, 12, 8),  # Inmaculada Concepción
-        date(year, 12, 25)  # Navidad
+        date(year, 12, 25), # Navidad
     })
-
     easter = easter_sunday(year)
-    # Jueves y Viernes Santo
+    # Jueves/Viernes Santo
     fest.update({easter - timedelta(days=3), easter - timedelta(days=2)})
-
-    # Festivos movibles (Ley Emiliani)
+    # Movibles (Ley Emiliani)
     fest.update({
         next_monday(date(year, 1, 6)),   # Epifanía
         next_monday(date(year, 3, 19)),  # San José
@@ -110,13 +148,12 @@ def festivos_colombia(year: int) -> set[date]:
         next_monday(date(year, 8, 15)),  # Asunción
         next_monday(date(year, 10, 12)), # Día de la Raza
         next_monday(date(year, 11, 1)),  # Todos los Santos
-        next_monday(date(year, 11, 11))  # Independencia de Cartagena
+        next_monday(date(year, 11, 11)), # Independencia de Cartagena
     })
-
-    # Festivos móviles alrededor de Pascua
-    fest.add(next_monday(easter + timedelta(days=43)))  # Ascensión
-    fest.add(next_monday(easter + timedelta(days=60)))  # Corpus Christi
-    fest.add(next_monday(easter + timedelta(days=68)))  # Sagrado Corazón
+    # Móviles alrededor de Pascua
+    fest.add(next_monday(easter + timedelta(days=43))) # Ascensión
+    fest.add(next_monday(easter + timedelta(days=60))) # Corpus Christi
+    fest.add(next_monday(easter + timedelta(days=68))) # Sagrado Corazón
     return fest
 
 def construir_calendario_festivos(col_fechas: pd.Series) -> set[date]:
@@ -129,19 +166,31 @@ def construir_calendario_festivos(col_fechas: pd.Series) -> set[date]:
 # --- Procesamiento principal ---
 def procesar_excel(df: pd.DataFrame) -> pd.DataFrame:
     df.columns = [col.strip().upper() for col in df.columns]
-    df['FECHA'] = pd.to_datetime(df['FECHA'])
+
+    # Parseo de fechas día/mes/año (según tu hoja) y detección de inválidas
+    df['FECHA'] = pd.to_datetime(df['FECHA'], dayfirst=True, errors='coerce')
+    if df['FECHA'].isna().any():
+        filas_invalidas = df[df['FECHA'].isna()]
+        raise ValueError(
+            f"Se encontraron fechas inválidas en {len(filas_invalidas)} fila(s). "
+            "Verifica el formato (dd/mm/aaaa)."
+        )
+
+    # Conversión de horas
     df['INI_DT'] = df['INICIAL'].apply(convertir_hora)
     df['FIN_DT'] = df['FINAL'].apply(convertir_hora)
 
     festivos_set = construir_calendario_festivos(df['FECHA'])
-    conceptos = []
 
+    conceptos = []
     def add_concepto(nombre, concepto_base, horas):
         if horas > 0:
             conceptos.append((nombre, concepto_base, horas))
 
+    # Agrupar por persona y fecha
     for (nombre, fecha), grupo in df.groupby(['NOMBRE', 'FECHA']):
         grupo = grupo.sort_values(by='INI_DT')
+
         segmentos_turno = []
         for _, row in grupo.iterrows():
             bloques = dividir_por_dia(fecha, row['INI_DT'], row['FIN_DT'])
@@ -149,7 +198,6 @@ def procesar_excel(df: pd.DataFrame) -> pd.DataFrame:
                 segmentos_turno.extend(segmentar_por_franja(ini_dt, fin_dt))
 
         segmentos_turno.sort(key=lambda seg: seg['start'])
-
         horas_ordinarias_restantes_por_dia = {}
 
         for seg in segmentos_turno:
@@ -182,7 +230,6 @@ def procesar_excel(df: pd.DataFrame) -> pd.DataFrame:
                         add_concepto(nombre, 'Hora extra nocturna en domingo o festivo', extra)
 
                 horas_ordinarias_restantes_por_dia[dia_real] = max(0.0, restante - ordinaria)
-
             else:
                 if tipo == 'diurna':
                     add_concepto(nombre, 'Hora extra diurna', dur)
@@ -195,7 +242,22 @@ def procesar_excel(df: pd.DataFrame) -> pd.DataFrame:
 
     resumen = df_conceptos.groupby(['NOMBRE', 'CONCEPTO_BASE'], as_index=False)['HORAS'].sum()
     resumen['CONCEPTO'] = resumen['CONCEPTO_BASE'].apply(lambda c: f"{c} ({PORCENTAJES[c]})")
+
     return resumen[['NOMBRE', 'CONCEPTO', 'HORAS']]
+
+# --- Helpers de validación para la interfaz ---
+def encontrar_invalidos(serie: pd.Series, etiqueta_col: str) -> pd.DataFrame:
+    """
+    Devuelve un DataFrame con las filas cuyo valor no se puede convertir a hora.
+    Incluye el índice y el valor original.
+    """
+    errores = []
+    for idx, val in serie.items():
+        try:
+            convertir_hora(val)
+        except Exception as e:
+            errores.append({'FILA_DF': idx, 'COLUMNA': etiqueta_col, 'VALOR': val, 'ERROR': str(e)})
+    return pd.DataFrame(errores)
 
 # --- Interfaz Streamlit ---
 st.title("📝 Horas Extras Universidad Autónoma del Caribe")
@@ -204,21 +266,56 @@ st.write("Sube tu archivo Excel y genera el resumen con conceptos y porcentajes.
 archivo = st.file_uploader("Selecciona tu archivo Excel", type=["xlsx"])
 
 if archivo:
-    df = pd.read_excel(archivo, sheet_name='Hoja1', engine='openpyxl')
-    resumen = procesar_excel(df)
+    try:
+        # Leer hoja 'Hoja1'
+        df = pd.read_excel(archivo, sheet_name='Hoja1', engine='openpyxl')
+        df.columns = [c.strip().upper() for c in df.columns]
 
-    st.success("✅ Archivo procesado correctamente.")
-    st.write("### Resumen de horas por concepto:")
-    st.dataframe(resumen)
+        # Validación de columnas requeridas
+        requeridas = {'FECHA', 'NOMBRE', 'INICIAL', 'FINAL'}
+        faltantes = requeridas.difference(set(df.columns))
+        if faltantes:
+            st.error(f"Faltan columnas requeridas en el Excel: {', '.join(sorted(faltantes))}")
+            st.stop()
 
-    buffer = BytesIO()
-    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        resumen.to_excel(writer, index=False, sheet_name='Resumen')
-    buffer.seek(0)
+        # Validar fechas antes de procesar (sin romper la app)
+        fechas = pd.to_datetime(df['FECHA'], dayfirst=True, errors='coerce')
+        invalidas_fechas = df[fechas.isna()]
+        if not invalidas_fechas.empty:
+            st.error(f"Hay {len(invalidas_fechas)} fila(s) con FECHA inválida. Usa formato dd/mm/aaaa.")
+            st.dataframe(invalidas_fechas)
+            st.stop()
 
-    st.download_button(
-        label="📥 Descargar resumen en Excel",
-        data=buffer,
-        file_name="resumen_todos_conceptos.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+        # Validar horas INICIAL/FINAL antes de aplicar
+        inv_ini = encontrar_invalidos(df['INICIAL'], 'INICIAL')
+        inv_fin = encontrar_invalidos(df['FINAL'], 'FINAL')
+        inv_total = pd.concat([inv_ini, inv_fin], ignore_index=True)
+
+        if not inv_total.empty:
+            st.error("Se encontraron horas inválidas. Corrige estos valores y vuelve a subir el archivo:")
+            st.dataframe(inv_total)
+            st.stop()
+
+        # Procesar normalmente (ya validado)
+        resumen = procesar_excel(df)
+
+        st.success("✅ Archivo procesado correctamente.")
+        st.write("### Resumen de horas por concepto:")
+        st.dataframe(resumen)
+
+        # Descarga en Excel
+        buffer = BytesIO()
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            resumen.to_excel(writer, index=False, sheet_name='Resumen')
+        buffer.seek(0)
+
+        st.download_button(
+            label="📥 Descargar resumen en Excel",
+            data=buffer,
+            file_name="resumen_todos_conceptos.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    except Exception as e:
+        # Mostrar el error con más claridad en la app
+        st.error(f"❌ Ocurrió un error al procesar el archivo: {e}")
