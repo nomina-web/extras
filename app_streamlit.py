@@ -93,21 +93,37 @@ def next_monday(d: date) -> date:
 
 @lru_cache(maxsize=None)
 def festivos_colombia(year: int) -> set[date]:
-    date(year, 1, 1), date(year, 5, 1), date(year, 7, 20),
-        date(year, 8, 7), date(year, 12, 8), date(year, 12, 25)
-    })
-    easter = easter_sunday(year)
-    # Semana Santa
-    fest.update({easter - timedelta(days=3), easter - timedelta(days=2)})
-    # Trasladables
+    fest = set()
+    # Inamovibles
     fest.update({
-        next_monday(date(year, 1, 6)), next_monday(date(year, 3, 19)),
-        next_monday(date(year, 6, 29)), next_monday(date(year, 8, 15)),
-        next_monday(date(year, 10, 12)), next_monday(date(year, 11, 1)),
-        next_monday(date(year, 11, 11))
+        date(year, 1, 1),   # Año Nuevo
+        date(year, 5, 1),   # Día del Trabajo
+        date(year, 7, 20),  # Independencia
+        date(year, 8, 7),   # Batalla de Boyacá
+        date(year, 12, 8),  # Inmaculada Concepción
+        date(year, 12, 25), # Navidad
+    })
+
+    # Semana Santa
+    easter = easter_sunday(year)
+    fest.update({easter - timedelta(days=3), easter - timedelta(days=2)})
+
+    # Trasladables (Ley Emiliani)
+    fest.update({
+        next_monday(date(year, 1, 6)),   # Reyes
+        next_monday(date(year, 3, 19)),  # San José
+        next_monday(date(year, 6, 29)),  # San Pedro y San Pablo
+        next_monday(date(year, 8, 15)),  # Asunción
+        next_monday(date(year, 10, 12)), # Diversidad (Colón)
+        next_monday(date(year, 11, 1)),  # Todos los Santos
+        next_monday(date(year, 11, 11)), # Independencia Cartagena
+    })
+
+    # Móviles ligados a Pascua
     fest.add(easter + timedelta(days=43))  # Ascensión
     fest.add(easter + timedelta(days=64))  # Corpus Christi
     fest.add(easter + timedelta(days=71))  # Sagrado Corazón
+
     return fest
 
 def construir_calendario_festivos(col_fechas: pd.Series) -> set[date]:
