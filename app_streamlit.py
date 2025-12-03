@@ -83,14 +83,9 @@ def easter_sunday(year: int) -> date:
     h = (19 * a + b - d - g + 15) % 30
     i = c // 4
     k = c % 4
-    l = (32 + 2 * e + 2 * i - h - k) % 7
-    m = (a + 11 * h + 22 * l) // 451
-    month = (h + l - 7 * m + 114) // 31
-    day = ((h + l - 7 * m + 114) % 31) + 1
-    return date(year, month, day)
-
-def next_monday(d: date) -> date:
-   ()) % 7)
+   (d: date) -> date:
+    """Devuelve el lunes siguiente (incluye el mismo día si ya es lunes)."""
+    return d + timedelta(days=(0 - d.weekday()) % 7)
 
 @lru_cache(maxsize=None)
 def festivos_colombia(year: int) -> set[date]:
@@ -100,7 +95,11 @@ def festivos_colombia(year: int) -> set[date]:
         date(year, 1, 1),   # Año Nuevo
         date(year, 5, 1),   # Día del Trabajo
         date(year, 7, 20),  # Independencia
-        Santa
+        date(year, 8, 7),   # Batalla de Boyacá
+       , 12, 25), # Navidad
+    })
+
+    # Semana Santa
     easter = easter_sunday(year)
     fest.update({easter - timedelta(days=3), easter - timedelta(days=2)})
 
