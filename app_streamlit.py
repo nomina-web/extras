@@ -83,7 +83,16 @@ def easter_sunday(year: int) -> date:
     l = (32 + 2 * e + 2 * i - h - k) % 7
     m = (a + 11 * h + 22 * l) // 451
     month = (h + l - 7 * m + 114) // 31
-    date(year, 12, 8), date(year, 12, 25)
+    day = ((h + l - 7 * m + 114) % 31) + 1
+    return date(year, month, day)
+
+@lru_cache(maxsize=None)
+def festivos_colombia(year: int) -> set[date]:
+    fest = set()
+    # Festivos fijos
+    fest.update({
+        date(year, 1, 1), date(year, 5, 1), date(year, 7, 20),
+        date(year, 8, 7), date(year, 12, 8), date(year, 12, 25)
     })
 
     easter = easter_sunday(year)
@@ -92,10 +101,7 @@ def easter_sunday(year: int) -> date:
 
     # Festivos movibles (Ley Emiliani)
     fest.update({
-        next_monday(date(year, 1, 6)), next_monday(date(year, 3, 19)),
-        next_monday(date(year, 6, 29)), next_monday(date(year, 8, 15)),
-        next_monday(date(year, 10, 12)), next_monday(date(year, 11, 1)),
-        next_monday(date(year, 11, 11))
+       , 11, 11))
     })
 
     # Festivos móviles alrededor de Pascua
