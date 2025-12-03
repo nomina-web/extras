@@ -81,7 +81,7 @@ def procesar_excel(df):
     return resumen
 
 # Interfaz Streamlit
-st.title("📊 Calculadora de Horas Extras según Ley Laboral")
+st.title("📝 Horas Extras Universidad Autónoma del Caribe")
 st.write("Sube tu archivo Excel y genera el resumen con conceptos y porcentajes.")
 
 archivo = st.file_uploader("Selecciona tu archivo Excel", type=["xlsx"])
@@ -105,3 +105,4 @@ if archivo:
         file_name="resumen_todos_conceptos.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
