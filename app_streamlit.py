@@ -10,8 +10,11 @@ PORCENTAJES = {
     'Hora extra diurna': '25%',
     'Hora extra nocturna': '75%',
     'Hora extra diurna en domingo o festivo': '105%',
-    'Hora extra nocturna en domingo o festivo': '155%'
+    'Hora extra nocturna en domingo o festivo': '155%',
+    'Hora ordinaria en domingo o festivo': '80%'
 }
+
+HORAS_JORNADA = 8  # Jornada ordinaria para festivos/domingo
 
 # --- Utilidades ---
 def convertir_hora(hora_str: str) -> datetime:
@@ -88,8 +91,7 @@ def festivos_colombia(year: int) -> set[date]:
     fest.update({
         date(year, 1, 1), date(year, 5, 1), date(year, 7, 20),
         date(year, 8, 7), date(year, 12, 8), date(year, 12, 25)
-    })
-    easter = easter_sunday(year)
+   ter = easter_sunday(year)
     fest.update({easter - timedelta(days=3), easter - timedelta(days=2)})
     fest.update({
         next_monday(date(year, 1, 6)), next_monday(date(year, 3, 19)),
@@ -98,7 +100,7 @@ def festivos_colombia(year: int) -> set[date]:
         next_monday(date(year, 11, 11))
     })
     fest.add(next_monday(easter + timedelta(days=43)))  # Ascensión
-    fest.add(next_monday(easter + timedelta(days=60)))  # Corpus Christi
+    Corpus Christi
     fest.add(next_monday(easter + timedelta(days=68)))  # Sagrado Corazón
     return fest
 
@@ -143,11 +145,26 @@ def procesar_excel(df: pd.DataFrame) -> pd.DataFrame:
             es_festivo_o_domingo = es_domingo or es_festivo
 
             if es_festivo_o_domingo:
-                if tipo == 'diurna':
-                    add_concepto(nombre, 'Hora extra diurna en domingo o festivo', dur)
+                # Aplicar jornada ordinaria de 8h primero
+                if HORAS_JORNADA > 0:
+                    ordinaria = min(HORAS_JORNADA, dur)
+                    extra = max(0.0, dur - ordinaria)
+                    if ordinaria > 0:
+                        add_concepto(nombre, 'Hora ordinaria en domingo o festivo', ordinaria)
+                    if extra > 0:
+                        if tipo == 'diurna':
+                            add_concepto(nombre, 'Hora extra diurna en domingo o festivo', extra)
+                        else:
+                            add_concepto(nombre, 'Hora extra nocturna en domingo o festivo', extra)
+                    HORAS_JORNADA -= ordinaria
                 else:
-                    add_concepto(nombre, 'Hora extra nocturna en domingo o festivo', dur)
+                    # Ya se consumieron las 8h ordinarias
+                    if tipo == 'diurna':
+                        add_concepto(nombre, 'Hora extra diurna en domingo o festivo', dur)
+                    else:
+                        add_concepto(nombre, 'Hora extra nocturna en domingo o festivo', dur)
             else:
+                # Día normal: todo es extra
                 if tipo == 'diurna':
                     add_concepto(nombre, 'Hora extra diurna', dur)
                 else:
@@ -185,4 +202,3 @@ if archivo:
         data=buffer,
         file_name="resumen_todos_conceptos.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
