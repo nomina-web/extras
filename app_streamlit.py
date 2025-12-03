@@ -12,13 +12,12 @@ PORCENTAJES = {
     'Hora extra diurna en domingo o festivo': '105%',
     'Hora extra nocturna en domingo o festivo': '155%',
     'Hora ordinaria en domingo o festivo': '80%',
-    'Recargo nocturno': '35%',
     'Recargo nocturno festivo': '115%'  # ✅ Nuevo concepto
 }
 
-HORAS_JORNADA = 8  # Umbral para domingos/festivos
+HORAS_JORNADA = 8  # Umbral para turno completo
 
-# --- Utilidades de hora ---
+# --- Utilidades ---
 def convertir_hora(hora_str: str) -> datetime:
     s = hora_str.strip().lower().replace(' ', '')
     s = s.replace('p.m', 'pm').replace('a.m', 'am')
@@ -30,15 +29,10 @@ def combinar_fecha_hora(fecha, hora_dt):
     return datetime.combine(pd.to_datetime(fecha).date(), hora_dt.time())
 
 def dividir_por_dia(fecha, ini_time_dt, fin_time_dt):
-    """
-    Divide un intervalo que puede cruzar medianoche en bloques por fecha.
-    Devuelve lista de tuplas: (fecha_bloque, hora_inicio, hora_fin)
-    """
     ini = combinar_fecha_hora(fecha, ini_time_dt)
     fin = combinar_fecha_hora(fecha, fin_time_dt)
     if fin <= ini:
-        fin += timedelta(days=1)  # cruza medianoche
-
+        fin += timedelta(days=1)
     bloques = []
     actual = ini
     while actual.date() < fin.date():
@@ -49,29 +43,23 @@ def dividir_por_dia(fecha, ini_time_dt, fin_time_dt):
     return bloques
 
 def segmentar_por_franja(ini_dt, fin_dt):
-    """
-    Divide un bloque en segmentos diurnos (06:00–21:00) y nocturnos (21:00–06:00).
-    """
     if fin_dt <= ini_dt:
         fin_dt += timedelta(days=1)
-
     cortes = []
     for base in [ini_dt.date(), (ini_dt + timedelta(days=1)).date()]:
         cortes.append(datetime.combine(base, datetime.strptime('06:00', '%H:%M').time()))
         cortes.append(datetime.combine(base, datetime.strptime('21:00', '%H:%M').time()))
-
     puntos = [ini_dt, fin_dt] + [c for c in cortes if ini_dt < c < fin_dt]
     puntos.sort()
-
     segmentos = []
     for s, e in zip(puntos[:-1], puntos[1:]):
         dur = (e - s).total_seconds() / 3600.0
         mid = s + (e - s) / 2
         tipo = 'diurna' if 6 <= mid.hour < 21 else 'nocturna'
-        segmentos.append((dur, tipo))
+        segmentos.append((dur, tipo, s.date()))
     return segmentos
 
-# --- Computus: Pascua ---
+# --- Festivos ---
 def easter_sunday(year: int) -> date:
     a = year % 19
     b = year // 100
@@ -86,46 +74,26 @@ def easter_sunday(year: int) -> date:
     l = (32 + 2 * e + 2 * i - h - k) % 7
     m = (a + 11 * h + 22 * l) // 451
     month = (h + l - 7 * m + 114) // 31
-    day = ((h + l - 7 * m + 114) % 31) + 1
-    return date(year, month, day)
-
-def next_monday(d: date) -> date:
-    """Devuelve el lunes siguiente (incluye el mismo día si ya es lunes)."""
-    return d + timedelta(days=(0 - d.weekday()) % 7)
+   7)
 
 @lru_cache(maxsize=None)
 def festivos_colombia(year: int) -> set[date]:
     fest = set()
-    # Inamovibles
     fest.update({
-        date(year, 1, 1),   # Año Nuevo
-        date(year, 5, 1),   # Día del Trabajo
-        date(year, 7, 20),  # Independencia
-        date(year, 8, 7),   # Batalla de Boyacá
-        date(year, 12, 8),  # Inmaculada Concepción
-        date(year, 12, 25), # Navidad
+        date(year, 1, 1), date(year, 5, 1), date(year, 7, 20),
+        date(year, 8, 7), date(year, 12, 8), date(year, 12, 25)
     })
-
-    # Semana Santa
     easter = easter_sunday(year)
     fest.update({easter - timedelta(days=3), easter - timedelta(days=2)})
-
-    # Trasladables (Ley Emiliani)
     fest.update({
-        next_monday(date(year, 1, 6)),   # Reyes
-        next_monday(date(year, 3, 19)),  # San José
-        next_monday(date(year, 6, 29)),  # San Pedro y San Pablo
-        next_monday(date(year, 8, 15)),  # Asunción
-        next_monday(date(year, 10, 12)), # Diversidad (Colón)
-        next_monday(date(year, 11, 1)),  # Todos los Santos
-        next_monday(date(year, 11, 11)), # Independencia Cartagena
+        next_monday(date(year, 1, 6)), next_monday(date(year, 3, 19)),
+       (date(year, 8, 15)),
+        next_monday(date(year, 10, 12)), next_monday(date(year, 11, 1)),
+        next_monday(date(year, 11, 11))
     })
-
-    # Móviles ligados a Pascua
-    fest.add(easter + timedelta(days=43))  # Ascensión
-    fest.add(easter + timedelta(days=64))  # Corpus Christi
-    fest.add(easter + timedelta(days=71))  # Sagrado Corazón
-
+    fest.add(easter + timedelta(days=43))
+    fest.add(easter + timedelta(days=64))
+    fest.add(easter + timedelta(days=71))
     return fest
 
 def construir_calendario_festivos(col_fechas: pd.Series) -> set[date]:
@@ -153,34 +121,44 @@ def procesar_excel(df: pd.DataFrame) -> pd.DataFrame:
         grupo = grupo.sort_values(by='INI_DT')
         for _, row in grupo.iterrows():
             bloques = dividir_por_dia(fecha, row['INI_DT'], row['FIN_DT'])
+            # Unir todos los segmentos del turno completo
+            segmentos_turno = []
             for fecha_bloque, ini_dt, fin_dt in bloques:
-                es_domingo = (fecha_bloque.weekday() == 6)
-                es_festivo = (fecha_bloque in festivos_set)
-                es_festivo_o_domingo = es_domingo or es_festivo
-                horas_restantes_ordinarias = HORAS_JORNADA if es_festivo_o_domingo else 0
+                segmentos_turno.extend(segmentar_por_franja(ini_dt, fin_dt))
 
-                segmentos = segmentar_por_franja(ini_dt, fin_dt)
-                for dur, tipo in segmentos:
-                    if es_festivo_o_domingo:
-                        ordinaria = min(horas_restantes_ordinarias, dur)
-                        extra = max(0.0, dur - ordinaria)
-                        if tipo == 'diurna':
-                            if ordinaria > 0:
-                                add_concepto(nombre, 'Hora ordinaria en domingo o festivo', ordinaria)
-                            if extra > 0:
-                                add_concepto(nombre, 'Hora extra diurna en domingo o festivo', extra)
-                        else:  # nocturna
-                            if ordinaria > 0:
-                                add_concepto(nombre, 'Hora ordinaria en domingo o festivo', ordinaria)
-                                add_concepto(nombre, 'Recargo nocturno festivo', ordinaria)  # ✅ cambio aquí
-                            if extra > 0:
-                                add_concepto(nombre, 'Hora extra nocturna en domingo o festivo', extra)
-                        horas_restantes_ordinarias -= ordinaria
+            horas_restantes_ordinarias = HORAS_JORNADA
+            for dur, tipo, dia_real in segmentos_turno:
+                es_domingo = (dia_real.weekday() == 6)
+                es_festivo = (dia_real in festivos_set)
+                es_festivo_o_domingo = es_domingo or es_festivo
+
+                if horas_restantes_ordinarias > 0:
+                    ordinaria = min(horas_restantes_ordinarias, dur)
+                    extra = max(0.0, dur - ordinaria)
+                else:
+                    ordinaria = 0
+                    extra = dur
+
+                if es_festivo_o_domingo:
+                    if tipo == 'diurna':
+                        if ordinaria > 0:
+                            add_concepto(nombre, 'Hora ordinaria en domingo o festivo', ordinaria)
+                        if extra > 0:
+                            add_concepto(nombre, 'Hora extra diurna en domingo o festivo', extra)
+                    else:  # nocturna
+                        if ordinaria > 0:
+                            add_concepto(nombre, 'Recargo nocturno festivo', ordinaria)
+                        if extra > 0:
+                            add_concepto(nombre, 'Hora extra nocturna en domingo o festivo', extra)
+                else:
+                    if tipo == 'diurna':
+                        if extra > 0:
+                            add_concepto(nombre, 'Hora extra diurna', extra)
                     else:
-                        if tipo == 'diurna':
-                            add_concepto(nombre, 'Hora extra diurna', dur)
-                        else:
-                            add_concepto(nombre, 'Hora extra nocturna', dur)
+                        if extra > 0:
+                            add_concepto(nombre, 'Hora extra nocturna', extra)
+
+                horas_restantes_ordinarias -= ordinaria
 
     df_conceptos = pd.DataFrame(conceptos, columns=['NOMBRE', 'CONCEPTO_BASE', 'HORAS'])
     resumen = df_conceptos.groupby(['NOMBRE', 'CONCEPTO_BASE'], as_index=False)['HORAS'].sum()
@@ -211,3 +189,4 @@ if archivo:
         file_name="resumen_todos_conceptos.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
