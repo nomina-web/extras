@@ -83,7 +83,12 @@ def easter_sunday(year: int) -> date:
     h = (19 * a + b - d - g + 15) % 30
     i = c // 4
     k = c % 4
-   (d: date) -> date:
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month114) % 31) + 1
+    return date(year, month, day)
+
+def next_monday(d: date) -> date:
     """Devuelve el lunes siguiente (incluye el mismo día si ya es lunes)."""
     return d + timedelta(days=(0 - d.weekday()) % 7)
 
@@ -96,7 +101,8 @@ def festivos_colombia(year: int) -> set[date]:
         date(year, 5, 1),   # Día del Trabajo
         date(year, 7, 20),  # Independencia
         date(year, 8, 7),   # Batalla de Boyacá
-       , 12, 25), # Navidad
+ date(year, 12, 8),  # Inmaculada Concepción
+        date(year, 12, 25), # Navidad
     })
 
     # Semana Santa
