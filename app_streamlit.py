@@ -41,11 +41,9 @@ def dividir_por_dia(fecha, ini_time_dt, fin_time_dt):
     bloques = []
     actual = ini
     while actual.date() < fin.date():
-        # Corte a medianoche del día actual
         corte = datetime.combine(actual.date(), datetime.strptime('23:59', '%H:%M').time()) + timedelta(minutes=1)
         bloques.append((actual.date(), actual, corte))
         actual = corte
-    # Último bloque
     bloques.append((fin.date(), actual, fin))
     return bloques
 
@@ -90,7 +88,12 @@ def easter_sunday(year: int) -> date:
     day = ((h + l - 7 * m + 114) % 31) + 1
     return date(year, month, day)
 
-def),
+def next_monday(d: date) -> date:
+    return d + timedelta(days=(0 - d.weekday()) % 7)
+
+@lru_cache(maxsize=None)
+def festivos_colombia(year: int) -> set[date]:
+    date(year, 1, 1), date(year, 5, 1), date(year, 7, 20),
         date(year, 8, 7), date(year, 12, 8), date(year, 12, 25)
     })
     easter = easter_sunday(year)
@@ -102,7 +105,6 @@ def),
         next_monday(date(year, 6, 29)), next_monday(date(year, 8, 15)),
         next_monday(date(year, 10, 12)), next_monday(date(year, 11, 1)),
         next_monday(date(year, 11, 11))
-   óviles ligados a Pascua
     fest.add(easter + timedelta(days=43))  # Ascensión
     fest.add(easter + timedelta(days=64))  # Corpus Christi
     fest.add(easter + timedelta(days=71))  # Sagrado Corazón
