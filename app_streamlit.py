@@ -97,7 +97,7 @@ def festivos_colombia(year: int) -> set[date]:
     easter = easter_sunday(year)
     fest.update({easter - timedelta(days=3), easter - timedelta(days=2)})
     fest.update({
-       (date(year, 1, 6)), next_monday(date(year, 3, 19)),
+        next_monday(date(year, 1, 6)), next_monday(date(year, 3, 19)),
         next_monday(date(year, 6, 29)), next_monday(date(year, 8, 15)),
         next_monday(date(year, 10, 12)), next_monday(date(year, 11, 1)),
         next_monday(date(year, 11, 11))
@@ -207,3 +207,4 @@ if archivo:
         data=buffer,
         file_name="resumen_todos_conceptos.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
