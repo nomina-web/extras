@@ -51,7 +51,7 @@ def segmentar_por_franja(fecha, ini_time_dt, fin_time_dt):
         segmentos.append((dur, tipo))
     return segmentos
 
-# --- Computus: Pascua (Meeus/Jones/Butcher) ---
+# --- Computus: Pascua ---
 def easter_sunday(year: int) -> date:
     a = year % 19
     b = year // 100
@@ -63,10 +63,7 @@ def easter_sunday(year: int) -> date:
     h = (19 * a + b - d - g + 15) % 30
     i = c // 4
     k = c % 4
-    l = (32 + 2 * e + 2 * i - h - k) % 7
-    m = (a + 11 * h + 22 * l) // 451
-    month = (h + l - 7 * m + 114) // 31
-    day = ((h + l - 7 * m + 114) % 31) + 1
+    l = ( ((h + l - 7 * m + 114) % 31) + 1
     return date(year, month, day)
 
 def next_monday(d: date) -> date:
@@ -79,8 +76,7 @@ def festivos_colombia(year: int) -> set[date]:
     fest.update({
         date(year, 1, 1), date(year, 5, 1), date(year, 7, 20),
         date(year, 8, 7), date(year, 12, 8), date(year, 12, 25)
-    = easter_sunday(year)
-    fest.update({easter - timedelta(days=3), easter - timedelta(days=2)})
+   aster - timedelta(days=3), easter - timedelta(days=2)})
     # Trasladables (Ley Emiliani)
     fest.update({
         next_monday(date(year, 1, 6)), next_monday(date(year, 3, 19)),
