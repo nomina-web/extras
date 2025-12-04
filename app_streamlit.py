@@ -241,18 +241,15 @@ def procesar_excel(df: pd.DataFrame) -> pd.DataFrame:
     if df_conceptos.empty:
         return pd.DataFrame(columns=['NOMBRE', 'CONCEPTO', 'HORAS'])
 
-    # --- NUEVO: Agrupar por porcentaje (acumulado por empleado) ---
-    df_conceptos['PORCENTAJE'] = df_conceptos['CONCEPTO_BASE'].map(PORCENTAJES)
-
+    # --- AGRUPACIÓN POR EMPLEADO + NOMBRE DE CONCEPTO (lo que pediste) ---
     resumen = (
         df_conceptos
-        .groupby(['NOMBRE', 'PORCENTAJE'], as_index=False)['HORAS']
+        .groupby(['NOMBRE', 'CONCEPTO_BASE'], as_index=False)['HORAS']
         .sum()
-        .sort_values(['NOMBRE', 'PORCENTAJE'])
+        .sort_values(['NOMBRE', 'CONCEPTO_BASE'])
     )
-
-    # Mostrar únicamente el porcentaje como concepto
-    resumen['CONCEPTO'] = resumen['PORCENTAJE']
+    # Mostrar el nombre del concepto con su porcentaje a la derecha
+    resumen['CONCEPTO'] = resumen['CONCEPTO_BASE'].apply(lambda c: f"{c} ({PORCENTAJES[c]})")
 
     return resumen[['NOMBRE', 'CONCEPTO', 'HORAS']]
 
@@ -272,7 +269,7 @@ def encontrar_invalidos(serie: pd.Series, etiqueta_col: str) -> pd.DataFrame:
 
 # --- Interfaz Streamlit ---
 st.title("📝 Horas Extras Universidad Autónoma del Caribe")
-st.write("Sube tu archivo Excel y genera el resumen acumulado por porcentaje.")
+st.write("Sube tu archivo Excel y genera el resumen de horas por concepto (acumulado por empleado).")
 
 archivo = st.file_uploader("Selecciona tu archivo Excel", type=["xlsx"])
 
@@ -311,7 +308,7 @@ if archivo:
         resumen = procesar_excel(df)
 
         st.success("✅ Archivo procesado correctamente.")
-        st.write("### Resumen de horas por porcentaje (acumulado por empleado):")
+        st.write("### Resumen de horas por concepto (acumulado por empleado):")
         st.dataframe(resumen)
 
         # Descarga en Excel
@@ -323,7 +320,7 @@ if archivo:
         st.download_button(
             label="📥 Descargar resumen en Excel",
             data=buffer,
-            file_name="resumen_por_porcentaje.xlsx",
+            file_name="resumen_conceptos.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
