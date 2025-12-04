@@ -329,3 +329,4 @@ if archivo:
 
     except Exception as e:
         # Mostrar el error con más claridad en la app
+        st.error(f"❌ Ocurrió un error al procesar el archivo: {e}")
