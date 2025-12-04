@@ -1,4 +1,5 @@
 
+# -*- coding: utf-8 -*-
 import re
 import pandas as pd
 from datetime import datetime, timedelta, date
@@ -167,7 +168,7 @@ def construir_calendario_festivos(col_fechas: pd.Series) -> set[date]:
 def procesar_excel(df: pd.DataFrame) -> pd.DataFrame:
     df.columns = [col.strip().upper() for col in df.columns]
 
-    # Parseo de fechas día/mes/año (según tu hoja) y detección de inválidas
+    # Parseo de fechas día/mes/año y detección de inválidas
     df['FECHA'] = pd.to_datetime(df['FECHA'], dayfirst=True, errors='coerce')
     if df['FECHA'].isna().any():
         filas_invalidas = df[df['FECHA'].isna()]
@@ -240,8 +241,18 @@ def procesar_excel(df: pd.DataFrame) -> pd.DataFrame:
     if df_conceptos.empty:
         return pd.DataFrame(columns=['NOMBRE', 'CONCEPTO', 'HORAS'])
 
-    resumen = df_conceptos.groupby(['NOMBRE', 'CONCEPTO_BASE'], as_index=False)['HORAS'].sum()
-    resumen['CONCEPTO'] = resumen['CONCEPTO_BASE'].apply(lambda c: f"{c} ({PORCENTAJES[c]})")
+    # --- NUEVO: Agrupar por porcentaje (acumulado por empleado) ---
+    df_conceptos['PORCENTAJE'] = df_conceptos['CONCEPTO_BASE'].map(PORCENTAJES)
+
+    resumen = (
+        df_conceptos
+        .groupby(['NOMBRE', 'PORCENTAJE'], as_index=False)['HORAS']
+        .sum()
+        .sort_values(['NOMBRE', 'PORCENTAJE'])
+    )
+
+    # Mostrar únicamente el porcentaje como concepto
+    resumen['CONCEPTO'] = resumen['PORCENTAJE']
 
     return resumen[['NOMBRE', 'CONCEPTO', 'HORAS']]
 
@@ -261,7 +272,7 @@ def encontrar_invalidos(serie: pd.Series, etiqueta_col: str) -> pd.DataFrame:
 
 # --- Interfaz Streamlit ---
 st.title("📝 Horas Extras Universidad Autónoma del Caribe")
-st.write("Sube tu archivo Excel y genera el resumen con conceptos y porcentajes.")
+st.write("Sube tu archivo Excel y genera el resumen acumulado por porcentaje.")
 
 archivo = st.file_uploader("Selecciona tu archivo Excel", type=["xlsx"])
 
@@ -300,7 +311,7 @@ if archivo:
         resumen = procesar_excel(df)
 
         st.success("✅ Archivo procesado correctamente.")
-        st.write("### Resumen de horas por concepto:")
+        st.write("### Resumen de horas por porcentaje (acumulado por empleado):")
         st.dataframe(resumen)
 
         # Descarga en Excel
@@ -312,10 +323,9 @@ if archivo:
         st.download_button(
             label="📥 Descargar resumen en Excel",
             data=buffer,
-            file_name="resumen_todos_conceptos.xlsx",
+            file_name="resumen_por_porcentaje.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
     except Exception as e:
         # Mostrar el error con más claridad en la app
-        st.error(f"❌ Ocurrió un error al procesar el archivo: {e}")
